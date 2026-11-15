@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "data/**",
+      "maxDuration": 15
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index.js" },
+    { "source": "/health", "destination": "/api/index.js" },
+    { "source": "/", "destination": "/web/index.html" },
+    { "source": "/driver", "destination": "/web/driver.html" },
+    { "source": "/driver.html", "destination": "/web/driver.html" },
+    { "source": "/admin", "destination": "/web/admin.html" },
+    { "source": "/admin.html", "destination": "/web/admin.html" },
+    { "source": "/(.*)", "destination": "/web/$1" }
+  ]
+}

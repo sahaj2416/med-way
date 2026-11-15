@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Local Environment
+.env
+.env.local
+.env.*.local
+
+# Large datasets (>100MB exceeds GitHub limit)
+data/noida.osm
+
+# SQLite WAL and lock artifacts (keep medway.db)
+data/*.db-shm
+data/*.db-wal
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# System and IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+build/
+*.class
+
+# Vercel local output
+.vercel/

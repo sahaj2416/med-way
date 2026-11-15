@@ -1,0 +1,18 @@
+# Exclude large raw datasets (use cache instead)
+data/noida.osm
+
+# Temporary database files
+data/*.db-shm
+data/*.db-wal
+
+# Exclude documentation & reports to minimize lambda bundle size
+docs/**
+tests/**
+flaws.md
+ARCHITECTURE.md
+Med_Way_SE_Project_Report.pdf
+
+# Logs & dev
+*.log
+.vscode/
+.idea/

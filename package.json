@@ -1,0 +1,21 @@
+{
+  "name": "se-project-med-way-copy",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node src/db/seed.js",
+    "parse-osm": "node src/algorithms/OSMParser.js",
+    "test": "node tests/run_all_tests.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1",
+    "sax": "^1.4.1",
+    "sqlite3": "^6.0.1"
+  }
+}
