@@ -74,15 +74,17 @@ async function executeDispatch(req, res, mode, roadGraphOverride = null) {
   const landmark = payload.landmark ? String(payload.landmark).trim() : null;
   const patientCount = parseInt(payload.patientCount || payload.patient_count || 1, 10);
   const medicalNotes = payload.medicalNotes || payload.medical_notes || null;
-  const patientId = payload.patientId || payload.patient_id || null;
+  const callerSessionId = payload.callerSessionId || payload.session_id || payload.patientId || payload.patient_id || req.headers['x-patient-id'] || null;
   const forceNewDispatch = (payload.forceNewDispatch === true || payload.forceNewDispatch === 'true' || payload.force_new_dispatch === true || payload.force_new_dispatch === 'true');
 
   // Active Dispatch Spatial-Temporal Deduplication Guard:
   // If an emergency mission is already active for these coordinates within the last 10 minutes,
   // return the existing dispatch to prevent accidental duplicate dispatches, unless explicitly forced.
+  // When a caller session is provided, deduplication scopes to that patient session, allowing distinct
+  // concurrent emergencies from different callers/devices at the same location to receive distinct vehicles.
   if (!forceNewDispatch) {
-    const existingActiveDispatch = await getAsync(
-      `SELECT d.id, d.incident_id, d.ambulance_id, d.hospital_id, d.driver_id, d.status,
+    let deduplicationSql = `
+      SELECT d.id, d.incident_id, d.ambulance_id, d.hospital_id, d.driver_id, d.status,
               d.route_distance_km, d.estimated_eta_minutes, d.route_geometry_json,
               i.latitude as patient_lat, i.longitude as patient_lon,
               a.vehicle_number, a.ambulance_type, a.latitude as amb_lat, a.longitude as amb_lon,
@@ -95,10 +97,17 @@ async function executeDispatch(req, res, mode, roadGraphOverride = null) {
          AND abs(i.latitude - ?) < 0.0005
          AND abs(i.longitude - ?) < 0.0005
          AND i.created_at >= datetime('now', '-10 minutes')
-       ORDER BY d.id DESC
-       LIMIT 1`,
-      [lat, lon]
-    );
+    `;
+    const deduplicationParams = [lat, lon];
+
+    if (callerSessionId) {
+      deduplicationSql += ' AND (i.caller_session_id = ? OR i.patient_id = ?)';
+      deduplicationParams.push(callerSessionId, callerSessionId);
+    }
+
+    deduplicationSql += ' ORDER BY d.id DESC LIMIT 1';
+
+    const existingActiveDispatch = await getAsync(deduplicationSql, deduplicationParams);
 
     if (existingActiveDispatch) {
       let routeGeo = null;
@@ -300,16 +309,23 @@ async function executeDispatch(req, res, mode, roadGraphOverride = null) {
     const ambEtaMinutes = Math.max(1, Math.round(calculateETA(ambToPatient.distanceKm, priority, ambToPatient.durationMinutes)));
     const hospEtaMinutes = Math.max(1, Math.round(calculateETA(totalHospDistKm, priority, patientToHosp.durationMinutes)));
 
+    // Verify if callerSessionId corresponds to a registered user ID (to fulfill foreign key if so)
+    let validUserPatientId = null;
+    if (callerSessionId) {
+      const userRow = await getAsync('SELECT id FROM users WHERE id = ?', [callerSessionId]);
+      if (userRow) validUserPatientId = userRow.id;
+    }
+
     // 5. Insert Incident
     const insertIncidentSql = `
       INSERT INTO incidents (
-        patient_id, request_type, latitude, longitude, road_node_id,
+        patient_id, caller_session_id, request_type, latitude, longitude, road_node_id,
         address, landmark, emergency_type, priority, patient_count, medical_notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const incRes = await runAsync(
       insertIncidentSql,
-      [patientId, requestType, lat, lon, patientRoadNode, address, landmark, emergencyType, priority, patientCount, medicalNotes]
+      [validUserPatientId, callerSessionId, requestType, lat, lon, patientRoadNode, address, landmark, emergencyType, priority, patientCount, medicalNotes]
     );
     const incidentId = incRes.lastID;
 
@@ -382,7 +398,7 @@ async function executeDispatch(req, res, mode, roadGraphOverride = null) {
     if (driverId) {
       eventStream.sendToUser(driverId, 'DISPATCH_ASSIGNED', dispatchBroadcast);
     }
-    eventStream.sendToRole('ADMIN', 'FLEET_UPDATE', {
+    eventStream.broadcast('FLEET_UPDATE', {
       ambulance_id: chosenAmb.id,
       status: 'ASSIGNED',
       dispatch_id: dispatchId

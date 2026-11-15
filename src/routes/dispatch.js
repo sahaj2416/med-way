@@ -67,7 +67,7 @@ router.post('/dispatch/complete', authenticateToken, requireRole('ADMIN', 'DRIVE
       status: 'COMPLETED',
       ambulance_id: dispatch.ambulance_id
     });
-    eventStream.sendToRole('ADMIN', 'FLEET_UPDATE', {
+    eventStream.broadcast('FLEET_UPDATE', {
       ambulance_id: dispatch.ambulance_id,
       status: 'AVAILABLE'
     });
@@ -161,7 +161,7 @@ router.post('/dispatch/update-status', authenticateToken, requireRole('DRIVER', 
       ambulance_id: dispatch.ambulance_id
     });
     if (newStatus === 'COMPLETED') {
-      eventStream.sendToRole('ADMIN', 'FLEET_UPDATE', {
+      eventStream.broadcast('FLEET_UPDATE', {
         ambulance_id: dispatch.ambulance_id,
         status: 'AVAILABLE'
       });

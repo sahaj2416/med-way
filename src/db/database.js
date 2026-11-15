@@ -104,6 +104,7 @@ function initDb() {
         CREATE TABLE IF NOT EXISTS incidents (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           patient_id TEXT,
+          caller_session_id TEXT,
           request_type TEXT NOT NULL,
           latitude REAL NOT NULL,
           longitude REAL NOT NULL,
@@ -175,6 +176,7 @@ function initDb() {
         CREATE INDEX IF NOT EXISTS idx_driver_profiles_user ON driver_profiles(user_id);
         CREATE INDEX IF NOT EXISTS idx_hosp_caps_hosp ON hospital_capabilities(hospital_id, specialty);
         CREATE INDEX IF NOT EXISTS idx_incidents_patient ON incidents(patient_id);
+        CREATE INDEX IF NOT EXISTS idx_incidents_caller_session ON incidents(caller_session_id);
       `;
 
       db.exec(schema, (err) => {
@@ -182,7 +184,17 @@ function initDb() {
           console.error('Error creating schema tables:', err);
           return reject(err);
         }
-        resolve(db);
+
+        // Safe progressive migration: Ensure caller_session_id exists on legacy DB files
+        db.all("PRAGMA table_info(incidents)", (tableErr, columns) => {
+          if (!tableErr && columns && !columns.some((c) => c.name === 'caller_session_id')) {
+            db.run("ALTER TABLE incidents ADD COLUMN caller_session_id TEXT", () => {
+              resolve(db);
+            });
+          } else {
+            resolve(db);
+          }
+        });
       });
     });
   });

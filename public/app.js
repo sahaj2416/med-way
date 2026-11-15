@@ -115,8 +115,25 @@ function setPatientLocation(latlng, panToMarker) {
   ui.statusSubtext.textContent = "Patient location selected. You can trigger SOS or continue with ambulance booking.";
 }
 
-async function fetchJson(url, options) {
-  const response = await fetch(url, options);
+function getPatientSessionId() {
+  let pid = null;
+  try {
+    pid = sessionStorage.getItem('medway_patient_session_id');
+    if (!pid) {
+      pid = 'PAT-' + Math.random().toString(36).substring(2, 9).toUpperCase() + '-' + Date.now().toString(36).toUpperCase();
+      sessionStorage.setItem('medway_patient_session_id', pid);
+    }
+  } catch (e) {
+    pid = 'PAT-ANON-' + Date.now();
+  }
+  return pid;
+}
+
+async function fetchJson(url, options = {}) {
+  const headers = Object.assign({
+    'x-patient-id': getPatientSessionId()
+  }, options.headers || {});
+  const response = await fetch(url, { ...options, headers });
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data.error || "Request failed");
@@ -207,14 +224,31 @@ function connectPatientEventStream(dispatchId) {
         ui.statusHeadline.textContent = "Patient Admitted to Hospital";
         ui.statusSubtext.textContent = "Emergency mission successfully completed.";
         try {
-          localStorage.removeItem('medway_active_dispatch_id');
           sessionStorage.removeItem('medway_active_dispatch_id');
+          localStorage.removeItem('medway_active_dispatch_id');
         } catch (e) {}
         state.latestDispatch = null;
         renderActionBar();
         if (patientEventSource) {
           patientEventSource.close();
           patientEventSource = null;
+        }
+      }
+    } catch (err) {}
+  });
+
+  patientEventSource.addEventListener('FLEET_UPDATE', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.ambulance_id && Array.isArray(state.ambulanceMarkers)) {
+        state.ambulanceMarkers.forEach((marker) => {
+          if (marker.ambulanceMeta && (marker.ambulanceMeta.id === data.ambulance_id || marker.ambulanceMeta.vehicle_number === data.ambulance_id)) {
+            marker.ambulanceMeta.available = (data.status === 'AVAILABLE');
+            marker.ambulanceMeta.status = data.status;
+          }
+        });
+        if (state.latestDispatch && state.latestDispatch.ambulance) {
+          highlightAssignedAmbulance(state.latestDispatch.ambulance);
         }
       }
     } catch (err) {}
@@ -230,8 +264,8 @@ function connectPatientEventStream(dispatchId) {
       }
       if (data.status === 'COMPLETED') {
         try {
-          localStorage.removeItem('medway_active_dispatch_id');
           sessionStorage.removeItem('medway_active_dispatch_id');
+          localStorage.removeItem('medway_active_dispatch_id');
         } catch (e) {}
         state.latestDispatch = null;
         renderActionBar();
@@ -248,8 +282,8 @@ function drawDispatch(dispatch) {
 
   if (dispatch.dispatch_id) {
     try {
-      localStorage.setItem('medway_active_dispatch_id', String(dispatch.dispatch_id));
       sessionStorage.setItem('medway_active_dispatch_id', String(dispatch.dispatch_id));
+      localStorage.removeItem('medway_active_dispatch_id');
     } catch (e) {}
   }
 
@@ -291,11 +325,13 @@ function drawDispatch(dispatch) {
 }
 
 function highlightAssignedAmbulance(assignedAmbulance) {
+  if (!assignedAmbulance) return;
   state.ambulanceMarkers.forEach((marker) => {
     const latlng = marker.getLatLng();
     const isAssigned =
-      Math.abs(latlng.lat - assignedAmbulance.lat) < 0.00001 &&
-      Math.abs(latlng.lng - assignedAmbulance.lon) < 0.00001;
+      (marker.ambulanceMeta && (marker.ambulanceMeta.id === assignedAmbulance.id || marker.ambulanceMeta.vehicle_number === assignedAmbulance.vehicle_number)) ||
+      (Math.abs(latlng.lat - assignedAmbulance.lat) < 0.0001 &&
+       Math.abs(latlng.lng - assignedAmbulance.lon) < 0.0001);
 
     const markerColor = isAssigned
       ? "#0ea5e9"
@@ -320,19 +356,31 @@ function escapeHtml(str) {
 function updateStatus(dispatch) {
   ui.statusCard.classList.remove("hidden");
   ui.statusModeBadge.textContent = dispatch.mode;
-  ui.statusHeadline.textContent = dispatch.mode === "SOS" ? "Emergency team assigned" : "Booking confirmed";
-  ui.assignedAmbulance.textContent = dispatch.ambulance.id;
+
+  const vehiclePlate = dispatch.ambulance.vehicle_number || dispatch.ambulance.id;
+  const vehicleLabel = dispatch.ambulance.vehicle_number ? `${dispatch.ambulance.vehicle_number} (${dispatch.ambulance.id})` : dispatch.ambulance.id;
+
+  if (dispatch.duplicate_prevented) {
+    ui.statusHeadline.textContent = "Active Mission Already Dispatched";
+    ui.statusHeadline.style.color = "#d97706";
+    ui.statusSubtext.textContent = `A paramedic unit (${vehiclePlate}) is already en route to this location. Zero duplicate ambulances dispatched. If you need an additional ambulance for another patient, click 'Need Another Ambulance' below.`;
+  } else {
+    ui.statusHeadline.textContent = dispatch.mode === "SOS" ? "Emergency team assigned" : "Booking confirmed";
+    ui.statusHeadline.style.color = "";
+    ui.statusSubtext.textContent = `${dispatch.ambulance.type} ambulance (${vehiclePlate}) is arriving in ${dispatch.ambulance.etaMinutes} mins. Route to ${dispatch.hospital.name} is now active.`;
+  }
+
+  ui.assignedAmbulance.textContent = vehicleLabel;
   ui.assignedHospital.textContent = dispatch.hospital.name;
   ui.routeDistance.textContent = `${dispatch.metrics.distanceKm} km`;
   ui.routeEta.textContent = `${dispatch.metrics.etaMinutes} min`;
-  ui.statusSubtext.textContent = `${dispatch.ambulance.type} ambulance is arriving in ${dispatch.ambulance.etaMinutes} mins. Route to ${dispatch.hospital.name} is now active.`;
 
   ui.sosResult.classList.remove("hidden");
   ui.sosResult.innerHTML = `
     <div class="result-grid">
       <div class="result-tile">
-        <span>Assigned Ambulance ID</span>
-        <strong>${escapeHtml(dispatch.ambulance.id)}</strong>
+        <span>Assigned Ambulance</span>
+        <strong>${escapeHtml(vehicleLabel)}</strong>
       </div>
       <div class="result-tile">
         <span>Hospital Name</span>
@@ -460,7 +508,8 @@ async function triggerSOS(forceNewDispatch = false) {
   ui.sosBtn.disabled = true;
 
   try {
-    const url = `/api/sos?lat=${state.patientLatLng.lat}&lon=${state.patientLatLng.lng}&priority=Critical${forceNewDispatch ? '&forceNewDispatch=true' : ''}`;
+    const patientId = getPatientSessionId();
+    const url = `/api/sos?lat=${state.patientLatLng.lat}&lon=${state.patientLatLng.lng}&priority=Critical&patientId=${encodeURIComponent(patientId)}${forceNewDispatch ? '&forceNewDispatch=true' : ''}`;
     const dispatch = await fetchJson(url);
     drawDispatch(dispatch);
     renderActionBar();
@@ -560,7 +609,8 @@ async function confirmBooking(hospitalId) {
       emergencyType: state.bookingData.emergencyType,
       ambulanceType: state.bookingData.ambulanceType,
       hospitalType: state.bookingData.hospitalType,
-      patientCount: state.bookingData.patientCount
+      patientCount: state.bookingData.patientCount,
+      patientId: getPatientSessionId()
     };
 
     const dispatch = await fetchJson("/api/book", {
@@ -583,7 +633,10 @@ async function confirmBooking(hospitalId) {
 
 function resetApp() {
   clearRoutes();
-  sessionStorage.removeItem('medway_active_dispatch_id');
+  try {
+    sessionStorage.removeItem('medway_active_dispatch_id');
+    localStorage.removeItem('medway_active_dispatch_id');
+  } catch (e) {}
   state.hospitalOptions = [];
   state.latestDispatch = null;
   state.isBooking = false;
@@ -701,9 +754,11 @@ async function init() {
   await loadBootstrapData();
 
   // Restore Active Mission Session (if page reloaded while ambulance en route)
+  // Use sessionStorage to isolate mission state per window/tab and purge legacy localStorage pollution
   let savedDispatchId = null;
   try {
-    savedDispatchId = localStorage.getItem('medway_active_dispatch_id') || sessionStorage.getItem('medway_active_dispatch_id');
+    savedDispatchId = sessionStorage.getItem('medway_active_dispatch_id');
+    localStorage.removeItem('medway_active_dispatch_id');
   } catch (e) {}
 
   if (savedDispatchId) {
@@ -716,8 +771,8 @@ async function init() {
           drawDispatch(data);
         } else {
           try {
-            localStorage.removeItem('medway_active_dispatch_id');
             sessionStorage.removeItem('medway_active_dispatch_id');
+            localStorage.removeItem('medway_active_dispatch_id');
           } catch (e) {}
         }
       }
