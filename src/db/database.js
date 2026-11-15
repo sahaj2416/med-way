@@ -2,8 +2,20 @@ const fs = require('fs');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 
-let dataDir = path.resolve(__dirname, '../../data');
-let dbPath = path.join(dataDir, 'medway.db');
+function findDataFile(filename) {
+  const candidates = [
+    path.resolve(__dirname, '../../data', filename),
+    path.resolve(process.cwd(), 'data', filename),
+    path.resolve(__dirname, '../data', filename),
+    path.resolve(process.cwd(), filename)
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return candidates[0];
+}
+
+let dbPath = findDataFile('medway.db');
 
 // In serverless environments like Vercel, the filesystem outside /tmp is read-only.
 if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
@@ -16,8 +28,8 @@ if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
     }
   }
   dbPath = tmpDbPath;
-} else if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+} else if (!fs.existsSync(path.dirname(dbPath))) {
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 }
 
 const db = new sqlite3.Database(dbPath);

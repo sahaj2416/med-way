@@ -173,9 +173,22 @@ function parseOSM(customPath) {
   });
 }
 
+function findDataFile(filename) {
+  const candidates = [
+    path.resolve(__dirname, '../../data', filename),
+    path.resolve(process.cwd(), 'data', filename),
+    path.resolve(__dirname, '../data', filename),
+    path.resolve(process.cwd(), filename)
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return candidates[0];
+}
+
 async function loadGraph(customPath, forceRebuild = false) {
-  const osmPath = customPath || path.resolve(__dirname, '../../data/noida.osm');
-  const cachePath = path.resolve(path.dirname(osmPath), 'noida_graph.cache.json');
+  const osmPath = customPath || findDataFile('noida.osm');
+  const cachePath = findDataFile('noida_graph.cache.json');
 
   if (!forceRebuild && fs.existsSync(cachePath)) {
     try {

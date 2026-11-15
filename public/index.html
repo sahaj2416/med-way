@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Med Way</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  >
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="topbar glass-panel">
+      <div class="brand">
+        <span class="brand-mark">🚑</span>
+        <div>
+          <h1>Med Way</h1>
+          <p>Emergency dispatch, booking, and route coordination</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <a href="driver.html" class="portal-link" title="Open Driver Portal">🚗 Driver Portal</a>
+        <a href="admin.html" class="portal-link" title="Open Admin Command Center">🛡️ Admin Portal</a>
+        <button id="locateBtn" class="ghost-btn" type="button">Use My Location</button>
+        <button id="resetBtn" class="ghost-btn" type="button">Reset</button>
+      </div>
+    </header>
+
+    <section id="map"></section>
+
+    <aside class="legend glass-panel">
+      <div class="legend-item"><span class="dot patient"></span>Patient</div>
+      <div class="legend-item"><span class="dot ambulance-available"></span>Available Ambulance</div>
+      <div class="legend-item"><span class="dot ambulance-busy"></span>Busy Ambulance</div>
+      <div class="legend-item"><span class="dot hospital"></span>Hospital</div>
+    </aside>
+
+    <section id="statusCard" class="status-card glass-panel hidden">
+      <div class="status-heading">
+        <span id="statusModeBadge" class="mode-badge">LIVE</span>
+        <strong id="statusHeadline">Awaiting action</strong>
+      </div>
+      <div class="status-grid">
+        <div class="status-metric">
+          <span>Assigned Ambulance</span>
+          <strong id="assignedAmbulance">--</strong>
+        </div>
+        <div class="status-metric">
+          <span>Hospital</span>
+          <strong id="assignedHospital">--</strong>
+        </div>
+        <div class="status-metric">
+          <span>Distance</span>
+          <strong id="routeDistance">--</strong>
+        </div>
+        <div class="status-metric">
+          <span>ETA</span>
+          <strong id="routeEta">--</strong>
+        </div>
+      </div>
+      <p id="statusSubtext" class="status-subtext">Select a location on the map or use your current location to start.</p>
+    </section>
+
+    <section id="controlPanel" class="control-panel glass-panel">
+      <div class="panel-handle"></div>
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Emergency Control</p>
+          <h2>Request or book an ambulance in seconds</h2>
+        </div>
+        <button id="closeBookingBtn" class="icon-btn hidden" type="button" aria-label="Close booking flow">✕</button>
+      </div>
+
+      <div id="mainActions" class="action-stack">
+        <button id="sosBtn" class="cta-btn sos-btn" type="button">🚨 SOS Emergency</button>
+        <button id="bookBtn" class="cta-btn book-btn" type="button">📋 Book Ambulance</button>
+      </div>
+
+      <!-- Active Mission Guard & Safe Secondary Actions -->
+      <div id="activeMissionActions" class="active-mission-actions hidden">
+        <div class="active-mission-banner">
+          <span class="mission-pulse-dot"></span>
+          <div>
+            <strong id="activeMissionTitle">Ambulance En Route</strong>
+            <p id="activeMissionSubtext" style="margin:2px 0 0; font-size:0.85rem; color:var(--muted);">Emergency response is actively navigating to your location.</p>
+          </div>
+        </div>
+        <div class="action-stack" style="margin-top:12px;">
+          <button id="requestSecondAmbBtn" class="ghost-btn" type="button" style="border-color: rgba(239, 68, 68, 0.4); color: #ef4444; width:100%;">
+            ⚠️ Need Another Ambulance?
+          </button>
+        </div>
+      </div>
+
+      <div id="sosResult" class="result-panel hidden"></div>
+
+      <div id="bookingFlow" class="booking-flow hidden">
+        <div class="stepper">
+          <div class="step active" data-step="1">1. Location</div>
+          <div class="step" data-step="2">2. Emergency</div>
+          <div class="step" data-step="3">3. Ambulance</div>
+          <div class="step" data-step="4">4. Hospital</div>
+          <div class="step" data-step="5">5. Patients</div>
+        </div>
+
+        <form id="bookingForm">
+          <div class="step-panel active" data-panel="1">
+            <label class="field">
+              <span>Address</span>
+              <input id="addressInput" type="text" placeholder="Sector, road, landmark or locality">
+            </label>
+            <label class="field">
+              <span>Landmark</span>
+              <input id="landmarkInput" type="text" placeholder="Near metro station / school / market">
+            </label>
+            <p class="helper-text">Click anywhere on the map to pin the patient location.</p>
+          </div>
+
+          <div class="step-panel" data-panel="2">
+            <div class="choice-grid two-col" id="emergencyChoices">
+              <button class="choice-card selected" type="button" data-field="emergencyType" data-value="Stroke">Stroke</button>
+              <button class="choice-card" type="button" data-field="emergencyType" data-value="Cardiac">Cardiac</button>
+              <button class="choice-card" type="button" data-field="emergencyType" data-value="Accident">Accident</button>
+              <button class="choice-card" type="button" data-field="emergencyType" data-value="Pregnancy">Pregnancy</button>
+            </div>
+          </div>
+
+          <div class="step-panel" data-panel="3">
+            <div class="choice-grid two-col" id="ambulanceChoices">
+              <button class="choice-card selected" type="button" data-field="ambulanceType" data-value="ALS">ALS</button>
+              <button class="choice-card" type="button" data-field="ambulanceType" data-value="ALS + Cardiac kit">ALS + Cardiac kit</button>
+              <button class="choice-card" type="button" data-field="ambulanceType" data-value="BLS/OB unit">BLS/OB unit</button>
+              <button class="choice-card" type="button" data-field="ambulanceType" data-value="BLS">BLS</button>
+            </div>
+          </div>
+
+          <div class="step-panel" data-panel="4">
+            <div class="choice-grid three-col" id="hospitalTypeChoices">
+              <button class="choice-card selected" type="button" data-field="hospitalType" data-value="Government">Government</button>
+              <button class="choice-card" type="button" data-field="hospitalType" data-value="Private">Private</button>
+              <button class="choice-card" type="button" data-field="hospitalType" data-value="Multi-specialty">Multi-specialty</button>
+            </div>
+          </div>
+
+          <div class="step-panel" data-panel="5">
+            <label class="field">
+              <span>Number of patients</span>
+              <input id="patientCountInput" type="number" min="1" max="8" value="1">
+            </label>
+            <label class="field">
+              <span>Priority</span>
+              <select id="priorityInput">
+                <option value="High">High</option>
+                <option value="Critical">Critical</option>
+                <option value="Moderate">Moderate</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="panel-actions">
+            <button id="prevStepBtn" class="ghost-btn hidden" type="button">Back</button>
+            <button id="nextStepBtn" class="ghost-btn" type="button">Next</button>
+            <button id="reviewHospitalsBtn" class="submit-btn hidden" type="submit">Find Hospitals</button>
+          </div>
+        </form>
+      </div>
+
+      <div id="hospitalSelection" class="hospital-selection hidden">
+        <div class="selection-header">
+          <div>
+            <p class="eyebrow">Hospital Options</p>
+            <h3>Best options near the patient</h3>
+          </div>
+          <span class="selection-badge">Best option selected</span>
+        </div>
+        <div id="hospitalCards" class="hospital-cards"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Accidental Re-Dispatch & Duplicate Confirmation Modal -->
+  <div id="duplicateModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-card">
+      <div class="modal-icon">🚑</div>
+      <h3 id="modalTitle" style="margin:0 0 8px; font-size:1.25rem;">Ambulance Already En Route</h3>
+      <p id="modalBody" style="margin:0 0 20px; font-size:0.92rem; color:var(--muted); line-height:1.5;">
+        An emergency vehicle (<strong id="modalAmbInfo" style="color:var(--text);">Assigned Unit</strong>) is currently navigating to your location.
+        Are you sure you want to request an <strong>additional ambulance</strong>?
+      </p>
+      <div class="modal-actions">
+        <button id="modalDismissBtn" class="cta-btn safe-btn" type="button">Keep Current Ambulance</button>
+        <button id="modalConfirmBtn" class="ghost-btn danger-btn" type="button">Yes, Dispatch 2nd Ambulance</button>
+      </div>
+    </div>
+  </div>
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+  <script src="app.js"></script>
+</body>
+</html>

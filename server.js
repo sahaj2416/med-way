@@ -106,6 +106,7 @@ app.use(async (req, res, next) => {
 });
 
 // Static Web Frontends
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(path.join(__dirname, 'web')));
 
 // Mount Domain Routers
