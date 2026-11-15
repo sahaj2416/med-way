@@ -32,7 +32,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   const allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
-  if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+  if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app') || origin.endsWith('.onrender.com')) {
     res.header('Access-Control-Allow-Origin', origin || '*');
   } else {
     res.header('Access-Control-Allow-Origin', origin);
