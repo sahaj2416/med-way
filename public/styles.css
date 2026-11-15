@@ -877,9 +877,12 @@ select {
   }
 }
 
+/* Dynamic Zoom-Aware Level-of-Detail (LOD) Hospital Markers */
 .hospital-blue-icon {
-  width: 30px;
-  height: 30px;
+  width: 28px !important;
+  height: 28px !important;
+  margin-left: -14px !important;
+  margin-top: -14px !important;
   border-radius: 50%;
   background-color: #2563eb;
   border: 2px solid white;
@@ -888,8 +891,74 @@ select {
   justify-content: center;
   color: white;
   font-weight: bold;
-  font-size: 20px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  font-size: 18px;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.2);
+  transition: width 0.15s ease, height 0.15s ease, font-size 0.15s ease, opacity 0.15s ease;
+  user-select: none;
+}
+
+/* Tier 2: Sector View (Zoom 13-14) */
+[data-hosp-zoom="zoom-md"] .hospital-blue-icon:not(.hosp-assigned) {
+  width: 18px !important;
+  height: 18px !important;
+  margin-left: -9px !important;
+  margin-top: -9px !important;
+  font-size: 11px !important;
+  border-width: 1.5px !important;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.15);
+}
+
+/* Tier 3: City Overview (Zoom 11-12, Default Med Way View = 12) */
+[data-hosp-zoom="zoom-sm"] .hospital-blue-icon:not(.hosp-assigned) {
+  width: 8px !important;
+  height: 8px !important;
+  margin-left: -4px !important;
+  margin-top: -4px !important;
+  font-size: 0 !important;
+  border-width: 1px !important;
+  opacity: 0.75;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.2);
+}
+
+/* Tier 4: Regional Overview (Zoom <= 10) */
+[data-hosp-zoom="zoom-xs"] .hospital-blue-icon:not(.hosp-assigned) {
+  width: 5px !important;
+  height: 5px !important;
+  margin-left: -2.5px !important;
+  margin-top: -2.5px !important;
+  font-size: 0 !important;
+  border-width: 1px !important;
+  opacity: 0.6;
+  box-shadow: none;
+}
+
+/* Destination Assigned Hospital Override (All Zoom Tiers) */
+.hospital-blue-icon.hosp-assigned {
+  width: 34px !important;
+  height: 34px !important;
+  margin-left: -17px !important;
+  margin-top: -17px !important;
+  font-size: 20px !important;
+  background-color: #2563eb !important;
+  border: 3px solid white !important;
+  z-index: 1000 !important;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.4), 0 8px 18px rgba(15, 23, 42, 0.25) !important;
+  animation: hospitalPulse 1.8s infinite;
+}
+
+@keyframes hospitalPulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.6), 0 8px 18px rgba(15, 23, 42, 0.25);
+  }
+  70% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 10px rgba(37, 99, 235, 0), 0 8px 18px rgba(15, 23, 42, 0.25);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0), 0 8px 18px rgba(15, 23, 42, 0.25);
+  }
 }
 
 /* Active Mission & Duplicate Prevention Banner */

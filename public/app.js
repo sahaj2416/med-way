@@ -58,6 +58,16 @@ const ui = {
   priorityInput: document.getElementById("priorityInput")
 };
 
+function updateMapHospitalZoomTier(mapInstance) {
+  if (!mapInstance) return;
+  const z = mapInstance.getZoom();
+  const tier = z >= 15 ? 'zoom-lg' : z >= 13 ? 'zoom-md' : z >= 11 ? 'zoom-sm' : 'zoom-xs';
+  const container = mapInstance.getContainer();
+  if (container) {
+    container.setAttribute('data-hosp-zoom', tier);
+  }
+}
+
 function createMap() {
   const map = L.map("map", {
     zoomControl: false
@@ -72,6 +82,10 @@ function createMap() {
   map.on("click", (event) => {
     setPatientLocation(event.latlng, true);
   });
+
+  map.on("zoom", () => updateMapHospitalZoomTier(map));
+  map.on("zoomend", () => updateMapHospitalZoomTier(map));
+  updateMapHospitalZoomTier(map);
 
   state.map = map;
 }
@@ -163,8 +177,32 @@ function renderHospitals(hospitals) {
   state.hospitalMarkers.forEach((marker) => marker.remove());
   state.hospitalMarkers = hospitals.map((hospital) => {
     const marker = L.marker([hospital.lat, hospital.lon], { icon: hospitalIcon() }).addTo(state.map);
-    marker.bindPopup(`<strong>${hospital.name}</strong><br>${hospital.type || 'Hospital'}`);
+    marker.hospitalMeta = hospital;
+    marker.bindPopup(`<strong>${escapeHtml(hospital.name)}</strong><br>${escapeHtml(hospital.type || 'Hospital')}`);
     return marker;
+  });
+  if (state.latestDispatch && state.latestDispatch.hospital) {
+    highlightAssignedHospital(state.latestDispatch.hospital);
+  }
+}
+
+function highlightAssignedHospital(assignedHospital) {
+  if (!assignedHospital || !Array.isArray(state.hospitalMarkers)) return;
+  state.hospitalMarkers.forEach((marker) => {
+    const el = marker.getElement();
+    if (!el) return;
+    const isAssigned = (
+      (marker.hospitalMeta && (String(marker.hospitalMeta.id) === String(assignedHospital.id) || marker.hospitalMeta.name === assignedHospital.name)) ||
+      (Math.abs(marker.getLatLng().lat - assignedHospital.lat) < 0.0002 &&
+       Math.abs(marker.getLatLng().lng - assignedHospital.lon) < 0.0002)
+    );
+    if (isAssigned) {
+      el.classList.add('hosp-assigned');
+      marker.setZIndexOffset(1000);
+    } else {
+      el.classList.remove('hosp-assigned');
+      marker.setZIndexOffset(0);
+    }
   });
 }
 
@@ -180,6 +218,13 @@ function clearRoutes() {
   if (state.animatedAmbulance) {
     state.map.removeLayer(state.animatedAmbulance);
     state.animatedAmbulance = null;
+  }
+  if (Array.isArray(state.hospitalMarkers)) {
+    state.hospitalMarkers.forEach((marker) => {
+      const el = marker.getElement();
+      if (el) el.classList.remove('hosp-assigned');
+      marker.setZIndexOffset(0);
+    });
   }
 }
 
@@ -306,6 +351,7 @@ function drawDispatch(dispatch) {
   state.map.fitBounds(bounds);
 
   highlightAssignedAmbulance(dispatch.ambulance);
+  highlightAssignedHospital(dispatch.hospital);
 
   // Place active animated ambulance marker on map
   if (state.animatedAmbulance) {
