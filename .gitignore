@@ -25,6 +25,3 @@ Thumbs.db
 .idea/
 build/
 *.class
-
-# Vercel local output
-.vercel/

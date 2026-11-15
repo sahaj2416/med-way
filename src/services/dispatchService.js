@@ -26,17 +26,42 @@ async function createNotification(userId, title, message, type = 'INFO') {
   }
 }
 
+let cachedCapabilities = null;
+
+async function getCapabilitiesMap() {
+  if (cachedCapabilities) return cachedCapabilities;
+  const rows = await allAsync('SELECT hospital_id, specialty FROM hospital_capabilities');
+  const map = new Map();
+  if (rows) {
+    for (const r of rows) {
+      const existing = map.get(r.hospital_id);
+      map.set(r.hospital_id, existing ? `${existing},${r.specialty}` : r.specialty);
+    }
+  }
+  cachedCapabilities = map;
+  return map;
+}
+
+function clearCapabilitiesCache() {
+  cachedCapabilities = null;
+}
+
 async function fetchHospitalsWithCapabilities() {
-  const query = `
-    SELECT h.id, h.name, h.latitude, h.longitude, h.road_node_id, h.type,
-           h.emergency_available, h.available_beds, h.available_icu_beds,
-           COALESCE(GROUP_CONCAT(c.specialty), '') as capabilities
-    FROM hospitals h
-    LEFT JOIN hospital_capabilities c ON h.id = c.hospital_id
-    WHERE h.latitude IS NOT NULL AND h.longitude IS NOT NULL
-    GROUP BY h.id
-  `;
-  return await allAsync(query);
+  const [capsMap, hospitals] = await Promise.all([
+    getCapabilitiesMap(),
+    allAsync(`
+      SELECT id, name, latitude, longitude, road_node_id, type,
+             emergency_available, available_beds, available_icu_beds
+      FROM hospitals
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+    `)
+  ]);
+
+  if (!hospitals) return [];
+  for (let i = 0; i < hospitals.length; i++) {
+    hospitals[i].capabilities = capsMap.get(hospitals[i].id) || '';
+  }
+  return hospitals;
 }
 
 async function selectBestHospital(patientLat, patientLon, emergencyType, priority, preferredType, roadGraphInstance, hospitalType) {
@@ -474,6 +499,7 @@ module.exports = {
   getRoadGraph,
   createNotification,
   fetchHospitalsWithCapabilities,
+  clearCapabilitiesCache,
   selectBestHospital,
   executeDispatch,
   handleDispatchFlow

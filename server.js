@@ -32,7 +32,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   const allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
-  if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app') || origin.endsWith('.onrender.com')) {
+  if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.onrender.com')) {
     res.header('Access-Control-Allow-Origin', origin || '*');
   } else {
     res.header('Access-Control-Allow-Origin', origin);
@@ -70,26 +70,29 @@ async function ensureInitialized() {
     const roadGraph = parsed.graph;
     setRoadGraph(roadGraph);
 
-    const stmt = db.prepare('UPDATE hospitals SET road_node_id = ? WHERE id = ?');
-    for (const h of parsed.hospitals) {
-      if (h.snappedNodeId) {
-        stmt.run(h.snappedNodeId, h.id);
-      }
-    }
-
-    // Ensure any pre-seeded hospitals (e.g. HOSP-001 to HOSP-007) are snapped to the road network
-    const remainingHospitals = await allAsync(
+    // Fast Snapped-Node Verification: Only run disk updates if hospitals lack snapped road node IDs
+    const unsyncedHospitals = await allAsync(
       'SELECT id, latitude, longitude FROM hospitals WHERE road_node_id IS NULL OR road_node_id LIKE "NODE-%"'
     );
-    if (remainingHospitals) {
-      for (const rh of remainingHospitals) {
-        const snapped = roadGraph.findNearestRoadNode(rh.latitude, rh.longitude, true);
-        if (snapped) {
-          stmt.run(snapped, rh.id);
-        }
-      }
+    if (unsyncedHospitals && unsyncedHospitals.length > 0) {
+      await new Promise((resolve, reject) => {
+        db.serialize(() => {
+          db.run('BEGIN TRANSACTION');
+          const stmt = db.prepare('UPDATE hospitals SET road_node_id = ? WHERE id = ?');
+          for (const rh of unsyncedHospitals) {
+            const snapped = roadGraph.findNearestRoadNode(rh.latitude, rh.longitude, true);
+            if (snapped) {
+              stmt.run(snapped, rh.id);
+            }
+          }
+          stmt.finalize();
+          db.run('COMMIT', (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+      });
     }
-    stmt.finalize();
   })();
   return initPromise;
 }
@@ -114,7 +117,6 @@ const staticOptions = {
   }
 };
 app.use(express.static(path.join(__dirname, 'public'), staticOptions));
-app.use(express.static(path.join(__dirname, 'web'), staticOptions));
 
 // Mount Domain Routers
 app.use('/', systemRoutes);
@@ -129,10 +131,8 @@ let isShuttingDown = false;
 async function startServer() {
   await ensureInitialized();
 
-  // Start Background Telemetry Retention Pruner (Hourly) only when running persistent server
-  if (!process.env.VERCEL) {
-    telemetryPruner.startSchedule();
-  }
+  // Start Background Telemetry Retention Pruner (Hourly)
+  telemetryPruner.startSchedule();
 
   httpServer = app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);

@@ -15,20 +15,8 @@ function findDataFile(filename) {
   return candidates[0];
 }
 
-let dbPath = findDataFile('medway.db');
-
-// In serverless environments like Vercel, the filesystem outside /tmp is read-only.
-if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
-  const tmpDbPath = path.join('/tmp', 'medway.db');
-  if (!fs.existsSync(tmpDbPath) && fs.existsSync(dbPath)) {
-    try {
-      fs.copyFileSync(dbPath, tmpDbPath);
-    } catch (e) {
-      console.warn('Failed to copy initial DB to /tmp:', e.message);
-    }
-  }
-  dbPath = tmpDbPath;
-} else if (!fs.existsSync(path.dirname(dbPath))) {
+const dbPath = findDataFile('medway.db');
+if (!fs.existsSync(path.dirname(dbPath))) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 }
 
