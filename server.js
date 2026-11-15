@@ -106,8 +106,15 @@ app.use(async (req, res, next) => {
 });
 
 // Static Web Frontends
-app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.static(path.join(__dirname, 'web')));
+const staticOptions = {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.js') || filePath.endsWith('.css') || filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
+  }
+};
+app.use(express.static(path.join(__dirname, 'public'), staticOptions));
+app.use(express.static(path.join(__dirname, 'web'), staticOptions));
 
 // Mount Domain Routers
 app.use('/', systemRoutes);
